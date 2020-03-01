@@ -1,0 +1,98 @@
+#!/bin/bash
+podcast_dir="/home/void/Projects/Podcast/webpage/media/podcastrec"
+web_dir="/home/void/Projects/Podcast/webpage"
+remote_dir="/usr/share/webapps/podcast"
+printf "
+._______.
+|       |                 . .               .
+|       |                 | |               |
+|_______| .______. .______| |_____. .____.  |      ._____.
+|         |      | |      | |     | |    |  |      |     |
+|         |      | |      | |     | |____|  |      |     |
+|         |______| |______| |     | |_____  |___|  |_____|
+                                                   |
+                                                   |
+                                                   |
+
+
+
+
+"
+printf "Welcome to Podhelp!\n\n\n"
+printf "Please enter the filename:\n(Part of it is enough)\n"
+read -r enter_filename
+printf "Please enter the Date:\n(Leave blank to use todays date)"
+read -r enter_date
+printf "Please enter a description:\nIn this episode I talk about ...\n"
+read -r description
+episode_number=$(/bin/ls $podcast_dir | wc -l)
+if [ $enter_date ]
+then
+	date_short="$enter_date"
+	printf "Please enter the full date:\n(ex. Sat, 22 Feb 2020 )\n"
+	read -r date_entered
+	date_long="$date_entered"
+else
+	date_short="$(date +%d.%m.%Y)"
+	date_long="$(date | awk '{print $1 ", " $2 " " $3 " " $4}')"
+fi
+file=$(/bin/ls $podcast_dir | grep $enter_filename)
+duration=$(ffmpeg -i $podcast_dir/$file 2>&1 | grep Duration | awk '{print $2}' | cut -d. -f1)
+clean_title=$(echo $file | tr _ ' ' | awk -F- '{print $2}' | awk -F. '{print $1}')
+printf "Title: $clean_title\nFilename: $file\nEpisode Number: $episode_number\nDate: $date_short -- $date_long\nDuration: $duration\nIs this correct?\n(y/n)\n"
+read -r correct
+if [ $correct = "y" ]
+then
+	printf "Starting Podcast post...\n"
+else
+	printf "Aborting ...\n"
+	exit 0
+fi
+printf "Updating list_podcast.php ...\n"
+sed -i "/<!-- Next in list -->/a\
+<li><a href=\"https://podcast.chainman.xyz/podcast.php#$date_short-$episode_number\">Epsiode $episode_number: $clean_title</a></li>" $web_dir/list_podcast.php
+printf "Updating podcast.php ...\n"
+sed -i "/<!-- Podcasts -->/a\
+<div class=\"card\">\n\
+\\<h2 id=$date_short-$episode_number>Episode $episode_number: $clean_title</h2>\n\
+\\<h5>$date_long</h5>\n\
+\\<p>In this episode I talk about $description If you are interested in this topic you can reach me on <a href=\"https://fosstodon.org/@MrChainman\">Mastodon</a> or email me at <a href=\"mailto:mrchainman@chainman.xyz\">mrchainman@chainman.xyz</a>. Also have a look at my website under <a href=\"https://podcast.chainman.xyz\">https://podcast.chainman.xyz</a></p>\n\
+\\<p>If you wanna subscribe to the podcast, just paste this url in your feedreader <a href=\"https://podcast.chainman.xyz/feed.xml\">https://podcast.chainman.xyz/feed.xml</a>\n\
+\\</p>\n\
+\\<div class=\"img_sma\">\n\
+\\<img src=\"./media/images/podcast_img.jpg\" alt=\"Alt\">\n\
+\\<a href=\"https://podcast.chainman.xyz/podcast.php#$date_short-$episode_number\">Link to this Podcast</a>\n\
+\\</div>\n\
+\\<audio controls style=\"width: 90%;\">\n\
+\\<source src=\"./media/podcastrec/$file\" type=\"audio/mpeg\">\n\
+\\Your browser does not support the audio element.\n\
+\\</audio>\n\
+\\</div> \n" $web_dir/podcast.php
+printf "Updating feed.xml ...\n"
+sed -i -e "/lastBuildDate/d" -e "/<itunes:subtitle>Stay Private! Stay Anonimous! Stay Free!/a\
+<lastBuildDate>$date_long 00:00:00 EST</lastBuildDate>\n\
+\\<item>\n\
+\\<title>Episode $episode_number: $clean_title</title>\n\
+\\<description>In this episode I talk about $description If you are interested in this topic you can reach me on mastodon under https://fosstodon.org/@MrChainman or email me at mrchainman@chainman.xyz. Subscribe directly to this podcast by using https://podcast.chainman.xyz/feed.xml . Also have a look at my website under https://podcast.chainman.xyz</description>\n\
+\\<itunes:summary>In this episode I talk about $description If you are interested in this topic you can reach me on mastodon under https://fosstodon.org/@MrChainman or email me at mrchainman@chainman.xyz. Subscribe directly to this podcast by using https://podcast.chainman.xyz/feed.xml . Also have a look at my website under https://podcast.chainman.xyz</itunes:summary>\n\
+\\<itunes:subtitle>In this episode I talk about $description</itunes:subtitle>\n\
+\\<itunesu:category itunesu:code=\"112\" />\n\
+\\<enclosure url=\"https://podcast.chainman.xyz/media/podcastrec/$file\" type=\"audio/mpeg\" length=\"1\" />\n\
+\\<guid>https://podcast.chainman.xyz/podcastfiles/$file</guid>\n\
+\\<itunes:duration>$duration</itunes:duration>\n\
+\\<pubDate>$date_long 00:00:00 EST</pubDate>\n\
+\\</item>" $web_dir/feed.xml
+printf "Updating index.php ...\n"
+sed -i "s/podcast.php#[0-9][0-9].[0-9][0-9].[0-9][0-9][0-9][0-9]-[0-9]/podcast.php#$date_short-$episode_number/" $web_dir/index.php
+printf "Done\nWould you like to sync the data with your server now?\n(y)\n"
+read -r syncnow
+if [ $syncnow = "y" ]
+then
+	printf "Checking for keychain ...\n"
+	keychain --eval --agents ssh contabo_rsa
+	printf "Syncing with server ...\n"
+	rsync -a --progress $web_dir/ contabo:$remote_dir/ &&
+	printf "Server updated!\nExiting now ...\n"
+else
+	printf "Exiting now ...\n"
+fi

@@ -1,0 +1,96 @@
+#!/bin/bash
+blogs_dir="/home/void/Projects/Podcast/blogposts"
+web_dir="/home/void/Projects/Podcast/webpage"
+remote_dir="/usr/share/webapps/podcast"
+
+printf "
+.______
+|      \  .                   .               .
+|       | |                   |               |
+|______/  |     .____. .____. |_____. .____.  |      ._____.
+|       \ |     |    | |    | |     | |    |  |      |     |
+|       | |     |    | |    | |     | |____|  |      |     |
+|______/  |___| |____| |____| |     | |_____  |___|  |_____|
+                            |                        |
+                            |                        |
+                       |____|                        |
+
+
+
+
+"
+printf "Welcome to the Bloghelp!\n\n\n"
+printf "Please specify the name of the Blogpost file:\n(Part of the filename is enough)\n"
+read -r file
+printf "Please enter the Title of the Blog post:\n(Leave blank to use the filename as title)\n"
+read -r insert_title
+printf "Please enter the Date:\n(Leave blank to use todays date)\n"
+read -r insert_date
+post=$(/bin/ls $blogs_dir | grep "$file")
+blog_number=$(/bin/ls $blogs_dir | wc -l)
+if [ $insert_title ]
+then
+	title=$insert_title
+else
+	title=${post%.html}
+fi
+if [ $insert_date ]
+then
+	date_short="$insert_date"
+	printf "Please enter the full date:\n(ex. Sat, 22 Feb 2020 )\n"
+	read -r date_entered
+	date_long="$date_entered"
+else
+	date_short="$(date +%d.%m.%Y)"
+	date_long="$(date | awk '{print $1 ", " $2 " " $3 " " $4}')"
+fi
+printf "Title: $title\nBlog post file: $post\nDate: $date_short -- $date_long\nBlog number: $blog_number\nIs this correct? (y/n)\n"
+read -r correct
+if [ $correct = "y" ]
+then
+	printf "Starting Blog post...\n"
+else
+	printf "Aborting ...\n"
+	exit 0
+fi
+sed -i -e '/^\s\{0,\}</! s/^/<p>/' -e '/>$/! s|$|</p>|' $blogs_dir/"$post"
+printf "Updating list_blog.php ...\n"
+sed -i "/<!-- Next in list -->/a\
+<li><a href=\"https://podcast.chainman.xyz/blog.php#$date_short-$blog_number\">$title</a></li>" $web_dir/list_blog.php
+printf "Updating blog.php ...\n"
+sed -i "/<!-- Blogs -->/a\
+<div class="blog">\n\
+\\<h2 id=$date_short-$blog_number>$title</h2>\n\
+\\<h3>$date_long</h3>\n\
+\\MARKER\n\
+\\<a href="https://podcast.chainman.xyz/blog.php#$date_short-$blog_number">Link to this Blog Post</a>\n\
+\\</div>\n" $web_dir/blog.php
+sed -i "/MARKER/r $blogs_dir/$post" $web_dir/blog.php
+sed -i "/MARKER/d" $web_dir/blog.php
+printf "Updating blog_feed.xml ...\n"
+sed -i "/<atom:link/a\
+<item>\n\
+\\<title>$title</title>\n\
+\\<guid>https://podcast.chainman.xyz/blog.html#$date_short-$blog_number</guid>\n\
+\\<pubDate>$date_long 00:00:00 EST</pubDate>\n\
+\\<description><![CDATA[\n\
+\\MARKER\n\
+\\<a href="https://podcast.chainman.xyz/blog.php#$date_short-$blog_number">Link to this Blog Post</a>\n\
+\\]]></description>\n\
+\\</item>" $web_dir/blog_feed.xml
+sed -i "/MARKER/r ../blogposts/$post" $web_dir/blog_feed.xml
+sed -i "/MARKER/d" $web_dir/blog_feed.xml
+printf "Updating index.php ...\n"
+sed -i "s/blog.php#[0-9][0-9].[0-9][0-9].[0-9][0-9][0-9][0-9]-[0-9]/blog.php#$date_short-$blog_number/" $web_dir/index.php
+printf "Done\nWould you like to sync the data with your server now?\n(y)\n"
+read -r syncnow
+if [ $syncnow = "y" ]
+then
+	printf "Checking for keychain ...\n"
+	keychain --eval --agents ssh contabo_rsa
+	printf "Syncing with server ...\n"
+	rsync -a --progress $web_dir/ contabo:$remote_dir/ &&
+	printf "Server updated!\nExiting now ...\n"
+else
+	printf "Exiting now ...\n"
+fi

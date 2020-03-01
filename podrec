@@ -1,0 +1,24 @@
+#!/bin/sh
+cd ~/Projects/Podcast/webpage/media/podcastrec
+st -e ncpamixer &
+st -e joplin &
+status=$(pamixer --default-source --get-volume-human)
+if [ $status = "muted" ]
+then
+	printf "WARNING: Your mic is muted!\nExiting now...\n"
+	exit 0
+else
+	continue
+fi
+printf "Enter Podcastepisode Name:\n"
+read -r NAME
+printf "Use todays date? (y/n)\n"
+read -r dateused
+if [ $dateused = "y" ]
+then
+	DATE=$( date +%d_%m_%Y )
+else
+	printf "Please enter the date which should be used:\n(ex. 22_02_2020)\n"
+	read -r DATE
+fi
+ffmpeg -y -f pulse -ac 1 -i default -acodec libmp3lame -preset ultrafast -filter:a "volume=15" ~/Projects/Podcast/webpage/media/podcastrec/$DATE-$NAME.mp3
